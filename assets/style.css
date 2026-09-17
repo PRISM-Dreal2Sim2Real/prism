@@ -11,3 +11,7 @@
 #v2v .player-toolbar{justify-content:flex-end}
 #v2v .quiz-tile video{object-fit:contain}
 @media(max-width:760px){#v2v .quiz-grid{gap:8px;padding:0 10px}#v2v .quiz-answer{font-size:10px}#v2v .quiz-action-row .controls{margin-left:0}}
+
+/* Source footage contains an answer-colored border after the opening frames.
+   Crop every quiz clip equally so playback cannot reveal the real seed. */
+#v2v .quiz-tile video{transform:scale(1.1)}
