@@ -191,14 +191,7 @@
           button.classList.toggle('selected', i === index);
           button.setAttribute('aria-pressed', String(i === index));
         });
-        tile.classList.add('revealed');
-        tile.classList.toggle('is-real', Boolean(choice.real));
-        tile.classList.toggle('is-wrong', !choice.real);
-        answer.textContent = choice.real ? 'Correct · real recording' : 'Generated · try another';
-        tile.setAttribute('aria-label', `Clip ${index + 1}: ${choice.real ? 'real recording' : 'generated video'}`);
-        $('#quiz-selection').textContent = choice.real
-          ? 'You found it! Show the answer to explore the comparison, or try a new round.'
-          : `Clip ${index + 1} was generated. Try another, or choose Show answer.`;
+        $('#quiz-selection').textContent = `You selected clip ${index + 1}. Click Show answer when you’re ready.`;
       });
       tile.addEventListener('keydown', event => {
         const directions = {ArrowRight: 1, ArrowLeft: -1, ArrowDown: 2, ArrowUp: -2};
