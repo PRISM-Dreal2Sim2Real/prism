@@ -139,8 +139,8 @@
     });
   }, 400);
 
-  // ----- One real video, eight counterfactuals. -----
-  let order = [...content.choices];
+  // ----- Four clips per round: one real seed and three counterfactuals. -----
+  let order = [];
   let selected = null;
   let revealed = false;
   function shuffle(array) {
@@ -151,14 +151,17 @@
     }
     return result;
   }
-  function renderQuiz(randomize = false) {
+  function renderQuiz() {
     const grid = $('#quiz-grid');
     $$('video', grid).forEach(v => v.pause());
-    order = randomize ? shuffle(content.choices) : [...content.choices];
+    const pool = shuffle(content.choices.filter(choice => !choice.real));
+    const picks = pool.slice(0, 3);
+    // A new round always changes the comparison, not just its positions.
+    if (picks.every(choice => order.some(previous => previous.id === choice.id)) && pool.length > 3) {
+      picks[2] = pool.find(choice => !order.some(previous => previous.id === choice.id));
+    }
+    order = shuffle([content.choices.find(choice => choice.real), ...picks]);
     selected = null; revealed = false;
-    $('#check-guess').disabled = true;
-    $('#inspect-guess').disabled = true;
-    $('#check-guess').textContent = 'Check my guess';
     $('#reveal-answer').disabled = false;
     $('#quiz-feedback').hidden = true;
     $('#quiz-feedback').replaceChildren();
@@ -188,12 +191,17 @@
           button.classList.toggle('selected', i === index);
           button.setAttribute('aria-pressed', String(i === index));
         });
-        $('#quiz-selection').textContent = `Your guess: clip ${String(index + 1).padStart(2, '0')}.`;
-        $('#check-guess').disabled = false;
-        $('#inspect-guess').disabled = false;
+        tile.classList.add('revealed');
+        tile.classList.toggle('is-real', Boolean(choice.real));
+        tile.classList.toggle('is-wrong', !choice.real);
+        answer.textContent = choice.real ? 'Correct · real recording' : 'Generated · try another';
+        tile.setAttribute('aria-label', `Clip ${index + 1}: ${choice.real ? 'real recording' : 'generated video'}`);
+        $('#quiz-selection').textContent = choice.real
+          ? 'You found it! Show the answer to explore the comparison, or try a new round.'
+          : `Clip ${index + 1} was generated. Try another, or choose Show answer.`;
       });
       tile.addEventListener('keydown', event => {
-        const directions = {ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3};
+        const directions = {ArrowRight: 1, ArrowLeft: -1, ArrowDown: 2, ArrowUp: -2};
         if (!(event.key in directions)) return;
         event.preventDefault();
         const next = (index + directions[event.key] + order.length) % order.length;
@@ -203,46 +211,33 @@
     });
     updateGroup(groups.get('quiz'));
   }
-  function reveal(checkGuess) {
-    if (revealed || (checkGuess && selected === null)) return;
+  function reveal() {
+    if (revealed) return;
     revealed = true;
     const realIndex = order.findIndex(choice => choice.real);
     $$('.quiz-tile').forEach((tile, index) => {
       const isReal = Boolean(order[index].real);
       tile.classList.add('revealed');
       tile.classList.toggle('is-real', isReal);
-      tile.classList.toggle('is-wrong', checkGuess && selected === index && !isReal);
+      tile.classList.remove('is-wrong');
       $('.quiz-answer', tile).textContent = isReal ? 'REAL · original seed' : 'V2V · generated';
       tile.setAttribute('aria-label', `Inspect clip ${index + 1}: ${isReal ? 'original real recording' : 'V2V-generated'}, ${order[index].object}`);
     });
     const feedback = $('#quiz-feedback');
     const title = document.createElement('strong');
-    title.textContent = checkGuess && selected === realIndex
-      ? `You found it. Clip ${realIndex + 1} is the real recording.`
-      : checkGuess
-        ? `Your pick was generated. Clip ${realIndex + 1} is the real recording.`
-        : `Clip ${realIndex + 1} is the real recording.`;
+    title.textContent = `Clip ${realIndex + 1} is the real recording.`;
     const explanation = document.createElement('p');
-    explanation.textContent = 'The cardboard-box interaction is the seed. The other eight videos are generated alternatives: not only different objects, but paired changes in the human’s reach, hand placement, and carrying motion.';
+    explanation.textContent = 'The cardboard-box interaction is the seed. The other three videos are generated alternatives: not only different objects, but paired changes in the human’s reach, hand placement, and carrying motion.';
     const caution = document.createElement('span');
     caution.textContent = 'Photorealism alone does not establish physical validity. PRISM reconstructs and grounds these interactions before learning in simulation. Click any revealed tile to inspect it.';
     feedback.replaceChildren(title, explanation, caution); feedback.hidden = false;
-    $('#check-guess').disabled = true; $('#check-guess').textContent = 'Answer revealed';
     $('#reveal-answer').disabled = true;
     $('#quiz-selection').textContent = 'Green marks the real seed. Every other clip is V2V-generated.';
     $('#sample-explorer').hidden = false;
   }
-  $('#inspect-guess').addEventListener('click', () => {
-    if (selected === null) return;
-    const choice = order[selected];
-    openVideo({id: choice.id, title: `Clip ${selected + 1}`,
-      note: revealed ? choice.insight : 'Inspect the object and the human motion. Close this view to return to your guess.',
-      speed: 'Source clip'});
-  });
-  $('#check-guess').addEventListener('click', () => reveal(true));
-  $('#reveal-answer').addEventListener('click', () => reveal(false));
-  $('#shuffle-quiz').addEventListener('click', () => renderQuiz(true));
-  renderQuiz(true);
+  $('#reveal-answer').addEventListener('click', reveal);
+  $('#shuffle-quiz').addEventListener('click', renderQuiz);
+  renderQuiz();
 
   // ----- Explore a pre-generated object-conditioned sample. -----
   content.choices.filter(choice => !choice.real).forEach((choice, index) => {
