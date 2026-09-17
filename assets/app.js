@@ -1,0 +1,412 @@
+/* PRISM research page. Static, accessible, and dependency-free.
+ * All samples are prerecorded. No remote inference, analytics, or tracking.
+ */
+(() => {
+  'use strict';
+  const assets = window.PRISM_ASSETS || {};
+  const content = window.PRISM_CONTENT || {choices: [], groups: []};
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let dialogOpen = false;
+  const groups = new Map();
+
+  function setMedia(video, id, label = '') {
+    const asset = assets[id];
+    video.pause();
+    video.removeAttribute('src');
+    video.dataset.asset = id;
+    delete video.dataset.loadedAsset;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.preload = 'none';
+    video.loop = true;
+    if (label) video.setAttribute('aria-label', label);
+    if (asset) video.poster = asset.poster;
+    if (video.parentElement) $$('.media-error', video.parentElement).forEach(e => e.remove());
+  }
+
+  function loadMedia(video) {
+    const id = video.dataset.asset;
+    const asset = assets[id];
+    if (!asset || video.dataset.loadedAsset === id) return;
+    video.dataset.loadedAsset = id;
+    video.src = asset.src;
+    video.preload = 'auto';
+    video.muted = true;
+    video.load();
+    if (!video.dataset.errorBound) {
+      video.dataset.errorBound = '1';
+      video.addEventListener('error', () => {
+        // Visible failure states instead of silently showing a broken video.
+        const frame = video.closest('.video-frame, .quiz-tile, .hero-film, .method-visual');
+        if (!frame || $('.media-error', frame)) return;
+        const note = document.createElement('span');
+        note.className = 'media-error';
+        note.textContent = 'This clip could not load. Please reload the page or check the local assets folder.';
+        frame.append(note);
+      });
+    }
+  }
+
+  const labels = {
+    hero: ['Play', 'Pause'], quiz: ['Play all', 'Pause all'],
+    samples: ['Play comparison', 'Pause comparison'], method: ['Play stage', 'Pause stage'],
+    results: ['Play four videos', 'Pause four videos']
+  };
+  function refreshButton(group) {
+    const isPlaying = $$('video', group.element).some(v => !v.paused && !v.ended);
+    $$(`[data-toggle-group="${group.name}"]`).forEach(button => {
+      button.textContent = (labels[group.name] || ['Play', 'Pause'])[isPlaying ? 1 : 0];
+      button.setAttribute('aria-label', button.textContent);
+      button.setAttribute('aria-pressed', String(isPlaying));
+    });
+  }
+  function updateGroup(group) {
+    if (!group) return;
+    const epoch = ++group.epoch;
+    const videos = $$('video', group.element);
+    const shouldPlay = group.playing && group.visible && !document.hidden && !dialogOpen;
+    if (!shouldPlay) {
+      videos.forEach(v => v.pause());
+      refreshButton(group);
+      return;
+    }
+    videos.forEach(v => { loadMedia(v); v.playbackRate = group.rate; });
+    const attempts = videos.map(v => v.play().catch(() => {}));
+    Promise.allSettled(attempts).then(() => {
+      if (group.epoch === epoch) refreshButton(group);
+    });
+  }
+  $$('[data-group]').forEach(element => {
+    const name = element.dataset.group;
+    groups.set(name, {name, element, playing: !reducedMotion.matches, visible: false, rate: 1, epoch: 0});
+  });
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      const group = groups.get(entry.target.dataset.group);
+      if (!group) return;
+      group.visible = entry.isIntersecting;
+      // Posters remain useful when autoplay is off or reduced motion is requested.
+      if (group.visible) $$('video', group.element).forEach(loadMedia);
+      updateGroup(group);
+    });
+  }, {threshold: 0.06});
+  groups.forEach(group => observer.observe(group.element));
+
+  $$('[data-toggle-group]').forEach(button => button.addEventListener('click', () => {
+    const group = groups.get(button.dataset.toggleGroup);
+    const currentlyPlaying = $$('video', group.element).some(v => !v.paused && !v.ended);
+    group.playing = !currentlyPlaying;
+    updateGroup(group);
+  }));
+  function restart(name) {
+    const group = groups.get(name);
+    if (!group) return;
+    $$('video', group.element).forEach(v => {
+      loadMedia(v);
+      if (v.readyState > 0) v.currentTime = 0;
+      else v.addEventListener('loadedmetadata', () => {v.currentTime = 0;}, {once: true});
+    });
+    group.playing = true;
+    updateGroup(group);
+  }
+  $$('[data-restart-group]').forEach(button => button.addEventListener('click', () => restart(button.dataset.restartGroup)));
+  $$('[data-rate-group]').forEach(select => select.addEventListener('change', () => {
+    const group = groups.get(select.dataset.rateGroup);
+    group.rate = Number(select.value) || 1;
+    $$('video', group.element).forEach(v => {v.playbackRate = group.rate;});
+  }));
+  document.addEventListener('visibilitychange', () => groups.forEach(updateGroup));
+  reducedMotion.addEventListener('change', event => {
+    if (event.matches) groups.forEach(group => {group.playing = false; updateGroup(group);});
+  });
+  // Only like-duration V2V clips are continually time-aligned.
+  // Real-world experiments have different durations and loop independently.
+  window.setInterval(() => {
+    ['quiz', 'samples'].forEach(name => {
+      const group = groups.get(name);
+      if (!group || !group.visible || !group.playing || document.hidden || dialogOpen) return;
+      const videos = $$('video', group.element).filter(v => !v.paused && v.readyState >= 2 && !v.seeking);
+      if (videos.length < 2) return;
+      const referenceTime = videos[0].currentTime;
+      videos.slice(1).forEach(v => {
+        if (Number.isFinite(v.duration) && Math.abs(v.currentTime - referenceTime) > 0.18) {
+          v.currentTime = Math.min(referenceTime, Math.max(0, v.duration - 0.04));
+        }
+      });
+    });
+  }, 400);
+
+  // ----- One real video, eight counterfactuals. -----
+  let order = [...content.choices];
+  let selected = null;
+  let revealed = false;
+  function shuffle(array) {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+  function renderQuiz(randomize = false) {
+    const grid = $('#quiz-grid');
+    $$('video', grid).forEach(v => v.pause());
+    order = randomize ? shuffle(content.choices) : [...content.choices];
+    selected = null; revealed = false;
+    $('#check-guess').disabled = true;
+    $('#inspect-guess').disabled = true;
+    $('#check-guess').textContent = 'Check my guess';
+    $('#reveal-answer').disabled = false;
+    $('#quiz-feedback').hidden = true;
+    $('#quiz-feedback').replaceChildren();
+    $('#quiz-selection').textContent = 'Select the clip you think is real.';
+    $('#sample-explorer').hidden = true; // Do not spoil the seed before the reveal.
+    grid.replaceChildren();
+    order.forEach((choice, index) => {
+      const tile = document.createElement('button');
+      tile.type = 'button'; tile.className = 'quiz-tile';
+      tile.setAttribute('aria-label', `Choose clip ${index + 1} as the real recording`);
+      tile.setAttribute('aria-pressed', 'false');
+      const video = document.createElement('video');
+      setMedia(video, choice.id);
+      // A video inside an answer button is decorative; the button owns the accessible name.
+      video.setAttribute('aria-hidden', 'true');
+      const number = document.createElement('span');
+      number.className = 'quiz-number'; number.textContent = String(index + 1).padStart(2, '0');
+      const answer = document.createElement('span'); answer.className = 'quiz-answer';
+      tile.append(video, number, answer);
+      tile.addEventListener('click', () => {
+        if (revealed) {
+          openVideo({id: choice.id, title: choice.real ? 'Original real recording · cardboard box' : `V2V-generated · ${choice.object}`, note: choice.insight, speed: 'Source clip'});
+          return;
+        }
+        selected = index;
+        $$('.quiz-tile', grid).forEach((button, i) => {
+          button.classList.toggle('selected', i === index);
+          button.setAttribute('aria-pressed', String(i === index));
+        });
+        $('#quiz-selection').textContent = `Your guess: clip ${String(index + 1).padStart(2, '0')}.`;
+        $('#check-guess').disabled = false;
+        $('#inspect-guess').disabled = false;
+      });
+      tile.addEventListener('keydown', event => {
+        const directions = {ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3};
+        if (!(event.key in directions)) return;
+        event.preventDefault();
+        const next = (index + directions[event.key] + order.length) % order.length;
+        $$('.quiz-tile', grid)[next].focus();
+      });
+      grid.append(tile);
+    });
+    updateGroup(groups.get('quiz'));
+  }
+  function reveal(checkGuess) {
+    if (revealed || (checkGuess && selected === null)) return;
+    revealed = true;
+    const realIndex = order.findIndex(choice => choice.real);
+    $$('.quiz-tile').forEach((tile, index) => {
+      const isReal = Boolean(order[index].real);
+      tile.classList.add('revealed');
+      tile.classList.toggle('is-real', isReal);
+      tile.classList.toggle('is-wrong', checkGuess && selected === index && !isReal);
+      $('.quiz-answer', tile).textContent = isReal ? 'REAL · original seed' : 'V2V · generated';
+      tile.setAttribute('aria-label', `Inspect clip ${index + 1}: ${isReal ? 'original real recording' : 'V2V-generated'}, ${order[index].object}`);
+    });
+    const feedback = $('#quiz-feedback');
+    const title = document.createElement('strong');
+    title.textContent = checkGuess && selected === realIndex
+      ? `You found it. Clip ${realIndex + 1} is the real recording.`
+      : checkGuess
+        ? `Your pick was generated. Clip ${realIndex + 1} is the real recording.`
+        : `Clip ${realIndex + 1} is the real recording.`;
+    const explanation = document.createElement('p');
+    explanation.textContent = 'The cardboard-box interaction is the seed. The other eight videos are generated alternatives: not only different objects, but paired changes in the human’s reach, hand placement, and carrying motion.';
+    const caution = document.createElement('span');
+    caution.textContent = 'Photorealism alone does not establish physical validity. PRISM reconstructs and grounds these interactions before learning in simulation. Click any revealed tile to inspect it.';
+    feedback.replaceChildren(title, explanation, caution); feedback.hidden = false;
+    $('#check-guess').disabled = true; $('#check-guess').textContent = 'Answer revealed';
+    $('#reveal-answer').disabled = true;
+    $('#quiz-selection').textContent = 'Green marks the real seed. Every other clip is V2V-generated.';
+    $('#sample-explorer').hidden = false;
+  }
+  $('#inspect-guess').addEventListener('click', () => {
+    if (selected === null) return;
+    const choice = order[selected];
+    openVideo({id: choice.id, title: `Clip ${selected + 1}`,
+      note: revealed ? choice.insight : 'Inspect the object and the human motion. Close this view to return to your guess.',
+      speed: 'Source clip'});
+  });
+  $('#check-guess').addEventListener('click', () => reveal(true));
+  $('#reveal-answer').addEventListener('click', () => reveal(false));
+  $('#shuffle-quiz').addEventListener('click', () => renderQuiz(true));
+  renderQuiz(true);
+
+  // ----- Explore a pre-generated object-conditioned sample. -----
+  content.choices.filter(choice => !choice.real).forEach((choice, index) => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'sample-option';
+    button.textContent = choice.object;
+    button.setAttribute('aria-pressed', String(index === 0));
+    button.addEventListener('click', () => {
+      $$('.sample-option').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+      setMedia($('#sample-video'), choice.id, `V2V-generated interaction with a ${choice.object.toLowerCase()}`);
+      $('#sample-caption').textContent = choice.insight;
+      const group = groups.get('samples');
+      const seed = $('video', group.element);
+      if (seed.readyState) seed.currentTime = 0;
+      updateGroup(group);
+    });
+    $('#sample-options').append(button);
+  });
+
+  // ----- Pipeline stage explorer. -----
+  const stages = [
+    {title: 'Scale a handful of real videos.', description: 'Use a real interaction as an anchor. V2V generation samples different objects together with the human motions that interact with them.', detail: '8 real seed videos → 256 counterfactual interaction videos', media: [{id:'demo-10', caption:'Counterfactual video bank · presentation slide 14'}]},
+    {title: 'Recover a shared 3D interaction.', description: 'Reconstruct the human, object, and camera in a shared frame. Contact anchors connect object motion to the human when contact begins, and release it when contact ends.', detail: 'Initialize object geometry → infer contact events → anchor object motion', media: [{id:'demo-11', caption:'Generated human–object video'},{id:'demo-12', caption:'Reconstructed human and object'}]},
+    {title: 'Preserve contact—not reconstruction noise.', description: 'Retarget the reconstructed interaction to the humanoid. Contact anchors help turn imperfect human–object reconstructions into physically plausible robot training references.', detail: 'Comparison: OmniRetarget on the left · PRISM on the right', media: [{id:'demo-13', caption:'Retargeting comparison · presentation slide 21'}]},
+    {title: 'Learn in simulation. Deploy in reality.', description: 'Train a privileged co-tracking teacher, then a depth-based student. The same policy performs pick, carry, and drop in the real world without real-world fine-tuning.', detail: 'Policy observations: onboard depth + proprioception. High-level steering: joystick commands.', media: [{id:'demo-15', caption:'Tracking in simulation'},{id:'demo-48', caption:'One policy across real-world objects'}]}
+  ];
+  function setStage(index) {
+    const stage = stages[index]; if (!stage) return;
+    $$('.method-tabs [role="tab"]').forEach((button, i) => {
+      button.setAttribute('aria-selected', String(i === index)); button.tabIndex = i === index ? 0 : -1;
+    });
+    $('#method-panel').setAttribute('aria-labelledby', `stage-tab-${index}`);
+    $('#method-index').textContent = `${String(index + 1).padStart(2, '0')} / 04`;
+    $('#method-stage-title').textContent = stage.title;
+    $('#method-stage-description').textContent = stage.description;
+    $('#method-detail').textContent = stage.detail;
+    const visual = $('#method-visual');
+    $$('video', visual).forEach(v => v.pause()); visual.replaceChildren();
+    visual.classList.toggle('split', stage.media.length > 1);
+    stage.media.forEach(item => {
+      const figure = document.createElement('figure');
+      const video = document.createElement('video'); setMedia(video, item.id, item.caption);
+      const caption = document.createElement('figcaption'); caption.textContent = item.caption;
+      figure.append(video, caption); visual.append(figure);
+    });
+    updateGroup(groups.get('method'));
+  }
+  $$('.method-tabs [data-stage]').forEach(button => button.addEventListener('click', () => setStage(Number(button.dataset.stage))));
+  setStage(0);
+
+  // ----- Four independent videos per generalization view. -----
+  let categoryIndex = 0; let pageIndex = 0;
+  content.groups.forEach((category, index) => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.id = `result-tab-${category.id}`;
+    button.setAttribute('role', 'tab'); button.setAttribute('aria-controls', 'generalization-panel');
+    button.textContent = category.name;
+    button.addEventListener('click', () => {categoryIndex = index; pageIndex = 0; renderResults();});
+    $('#result-tabs').append(button);
+  });
+  function renderResults() {
+    const category = content.groups[categoryIndex];
+    const clips = category.pages[pageIndex];
+    $$('#result-tabs [role="tab"]').forEach((button, i) => {
+      button.setAttribute('aria-selected', String(i === categoryIndex)); button.tabIndex = i === categoryIndex ? 0 : -1;
+    });
+    $('#generalization-panel').setAttribute('aria-labelledby', `result-tab-${category.id}`);
+    $('#gallery-title').textContent = category.title;
+    $('#gallery-description').textContent = category.description;
+    $('#gallery-source').textContent = category.source;
+    $('#gallery-page').textContent = `${pageIndex + 1} / ${category.pages.length}`;
+    $('#page-controls').hidden = category.pages.length < 2;
+    $('#gallery-prev').disabled = pageIndex === 0;
+    $('#gallery-next').disabled = pageIndex === category.pages.length - 1;
+    const grid = $('#result-grid');
+    $$('video', grid).forEach(v => v.pause()); grid.replaceChildren();
+    clips.forEach((clip, index) => {
+      const card = document.createElement('figure'); card.className = 'result-card';
+      const frame = document.createElement('div'); frame.className = 'video-frame';
+      const video = document.createElement('video'); setMedia(video, clip.id, `Real robot demonstration: ${clip.title}`);
+      const speed = document.createElement('span'); speed.className = 'speed-badge';
+      speed.textContent = clip.speed === 'Mixed' ? 'PRESENTATION · VARIABLE SPEED' : `PRESENTATION · ${clip.speed}`;
+      const expand = document.createElement('button'); expand.type = 'button'; expand.className = 'expand-video';
+      expand.textContent = 'Expand ↗'; expand.setAttribute('aria-label', `Expand ${clip.title} video`);
+      expand.addEventListener('click', () => openVideo(clip));
+      frame.append(video, speed, expand);
+      const caption = document.createElement('figcaption'); const text = document.createElement('div');
+      const title = document.createElement('h4'); title.textContent = clip.title;
+      const note = document.createElement('p'); note.textContent = clip.note;
+      const count = document.createElement('span'); count.className = 'clip-index'; count.textContent = String(pageIndex * 4 + index + 1).padStart(2,'0');
+      text.append(title,note); caption.append(text,count); card.append(frame,caption); grid.append(card);
+    });
+    updateGroup(groups.get('results'));
+  }
+  $('#gallery-prev').addEventListener('click', () => {if (pageIndex > 0) {pageIndex--; renderResults();}});
+  $('#gallery-next').addEventListener('click', () => {if (pageIndex < content.groups[categoryIndex].pages.length - 1) {pageIndex++; renderResults();}});
+  renderResults();
+
+  // Roving tab focus, including Home/End. Selection follows focus.
+  $$('[role="tablist"]').forEach(tablist => tablist.addEventListener('keydown', event => {
+    if (!['ArrowRight','ArrowLeft','Home','End'].includes(event.key)) return;
+    const buttons = $$('[role="tab"]', tablist);
+    const current = buttons.indexOf(document.activeElement);
+    if (current < 0) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next].click(); buttons[next].focus();
+  }));
+
+  // ----- Native modal video inspection and citation. -----
+  let previousFocus = null;
+  function showDialog(dialog) {
+    previousFocus = document.activeElement;
+    dialogOpen = true; groups.forEach(updateGroup);
+    document.body.style.overflow = 'hidden';
+    dialog.showModal();
+  }
+  function openVideo(clip) {
+    const asset = assets[clip.id]; if (!asset) return;
+    const modalVideo = $('#modal-video'); modalVideo.pause();
+    modalVideo.src = asset.src; modalVideo.poster = asset.poster;
+    modalVideo.playbackRate = 1; modalVideo.muted = true;
+    $('#modal-title').textContent = clip.title;
+    $('#modal-description').textContent = `${clip.note || ''}${clip.note ? ' · ' : ''}${clip.speed === 'Mixed' ? 'Variable speed in the original presentation.' : clip.speed === 'Source clip' ? 'Original clip timing.' : `Presentation label: ${clip.speed}.`} Player controls are relative to the supplied clip.`;
+    showDialog($('#video-dialog'));
+    modalVideo.play().catch(() => {});
+  }
+  $$('dialog').forEach(dialog => {
+    dialog.addEventListener('close', () => {
+      if (dialog.id === 'video-dialog') { $('#modal-video').pause(); $('#modal-video').removeAttribute('src'); $('#modal-video').load(); }
+      document.body.style.overflow = ''; dialogOpen = false;
+      groups.forEach(updateGroup);
+      if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+    });
+    dialog.addEventListener('click', event => {
+      if (event.target !== dialog) return;
+      const box = dialog.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
+    });
+  });
+  $$('[data-close-dialog]').forEach(button => button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close()));
+  $('#open-citation').addEventListener('click', () => showDialog($('#citation-dialog')));
+  $('#copy-citation').addEventListener('click', async () => {
+    const text = $('#citation-text').textContent;
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(text); $('#copy-status').textContent = 'Copied.';
+    } catch (_) {
+      const selection = window.getSelection(); const range = document.createRange();
+      range.selectNodeContents($('#citation-text')); selection.removeAllRanges(); selection.addRange(range);
+      $('#copy-status').textContent = 'Citation selected. Press Ctrl/Cmd+C to copy.';
+    }
+  });
+  // Reading progress is purely local; no scroll data are transmitted.
+  let scrollPending = false;
+  function updateProgress() {
+    const total = document.documentElement.scrollHeight - window.innerHeight;
+    $('#reading-progress').style.width = `${total > 0 ? Math.min(100, window.scrollY / total * 100) : 0}%`;
+    const sections = ['motivation','v2v','method','generalization'];
+    const active = sections.filter(id => document.getElementById(id).getBoundingClientRect().top <= 150).pop();
+    $$('.site-header nav a').forEach(link => link.classList.toggle('active', link.hash === `#${active}`));
+    scrollPending = false;
+  }
+  window.addEventListener('scroll', () => { if (!scrollPending) {scrollPending = true; window.requestAnimationFrame(updateProgress);} }, {passive:true});
+  window.addEventListener('resize', updateProgress); updateProgress();
+})();
