@@ -162,7 +162,6 @@
     }
     order = shuffle([content.choices.find(choice => choice.real), ...picks]);
     selected = null; revealed = false;
-    $('#reveal-answer').disabled = false;
     $('#quiz-feedback').hidden = true;
     $('#quiz-feedback').replaceChildren();
     $('#quiz-selection').textContent = 'Select the clip you think is real.';
@@ -191,7 +190,7 @@
           button.classList.toggle('selected', i === index);
           button.setAttribute('aria-pressed', String(i === index));
         });
-        $('#quiz-selection').textContent = `You selected clip ${index + 1}. Click Show answer when you’re ready.`;
+        reveal();
       });
       tile.addEventListener('keydown', event => {
         const directions = {ArrowRight: 1, ArrowLeft: -1, ArrowDown: 2, ArrowUp: -2};
@@ -218,17 +217,17 @@
     });
     const feedback = $('#quiz-feedback');
     const title = document.createElement('strong');
-    title.textContent = `Clip ${realIndex + 1} is the real recording.`;
+    title.textContent = selected === realIndex
+      ? `Correct! Clip ${realIndex + 1} is the real recording.`
+      : `Your pick was generated. Clip ${realIndex + 1} is the real recording.`;
     const explanation = document.createElement('p');
     explanation.textContent = 'The cardboard-box interaction is the seed. The other three videos are generated alternatives: not only different objects, but paired changes in the human’s reach, hand placement, and carrying motion.';
     const caution = document.createElement('span');
     caution.textContent = 'Photorealism alone does not establish physical validity. PRISM reconstructs and grounds these interactions before learning in simulation. Click any revealed tile to inspect it.';
     feedback.replaceChildren(title, explanation, caution); feedback.hidden = false;
-    $('#reveal-answer').disabled = true;
     $('#quiz-selection').textContent = 'Green marks the real seed. Every other clip is V2V-generated.';
     $('#sample-explorer').hidden = false;
   }
-  $('#reveal-answer').addEventListener('click', reveal);
   $('#shuffle-quiz').addEventListener('click', renderQuiz);
   renderQuiz();
 
