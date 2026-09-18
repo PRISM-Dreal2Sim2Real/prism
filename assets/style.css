@@ -15,3 +15,12 @@
 /* Source footage contains an answer-colored border after the opening frames.
    Crop every quiz clip equally so playback cannot reveal the real seed. */
 #v2v .quiz-tile video{transform:scale(1.1)}
+
+/* Separate primary authors from the co-leads while allowing mobile wrapping. */
+.authors{display:flex;flex-direction:column;align-items:center;gap:9px;max-width:1100px}
+.author-row{display:flex;justify-content:center;flex-wrap:wrap;gap:5px 18px}
+.author-row a{white-space:nowrap}
+.primary-authors{font-size:15px;gap:28px}
+.affiliations{display:flex;justify-content:center;flex-wrap:wrap;gap:6px 22px;font-size:12px;color:var(--muted);margin:12px 0 0}
+.affiliations sup{font-size:9px;margin-right:3px}
+@media(max-width:760px){.author-row{gap:5px 13px}.primary-authors{font-size:13px;gap:24px}.affiliations{font-size:11px}}
