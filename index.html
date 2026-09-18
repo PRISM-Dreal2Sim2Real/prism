@@ -11,7 +11,7 @@
   <meta property="og:image" content="assets/posters/demo-48.jpg">
   <title>PRISM · Counterfactual Video Generation for Humanoid Loco-Manipulation</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/style.css?v=eed883168d60">
+  <link rel="stylesheet" href="assets/style.css?v=7b69c5216ad5">
   <script src="assets/content.js" defer></script>
   <script src="assets/app.js?v=63f3a9468ad4" defer></script>
 </head>
@@ -58,10 +58,10 @@
 <section class="motivation section-shell section-space" id="motivation" aria-labelledby="motivation-title">
   <div class="section-label"><span>01</span> THE IDEA</div>
   <div class="editorial-grid">
-    <div><h2 class="section-title" id="motivation-title">Learn rich<br>interaction dynamics<br><em>by sampling.</em></h2><p class="large-takeaway">Not just more objects.<br>More ways to interact with them.</p></div>
-    <div class="motivation-copy"><p class="lead">A different object can require a different reach, grasp, and carrying strategy. A useful demonstration therefore needs both an object <em>and the motion that goes with it.</em></p><div class="argument"><span>01 / THE BOTTLENECK</span><h3>Useful interaction data are hard to scale.</h3><p>Clean, full-body videos with recoverable human–object contact are only a small part of the video data available online.</p></div><div class="argument"><span>02 / THE OPPORTUNITY</span><h3>Sample the interaction, not just its appearance.</h3><p>Anchor a video model to a real demonstration. Change the object, and sample paired human motions with different reaches, hand placements, and body configurations.</p></div><div class="argument"><span>03 / THE BRIDGE TO CONTROL</span><h3>Turn visual possibilities into physical experience.</h3><p>Generated video is not a physics simulator. Contact-anchored reconstruction and retargeting produce training references; reinforcement learning grounds the skill in simulation.</p></div></div>
+    <div><h2 class="section-title" id="motivation-title">New objects.<br>New ways<br><em>to interact.</em></h2></div>
+    <div class="motivation-copy"><p class="lead">Starting from a few real videos, PRISM generates new objects together with <em>the human motions to match.</em></p><p class="idea-summary">We reconstruct these interactions in 3D and train in simulation, so one humanoid policy can pick, carry, and drop unfamiliar objects in the real world.</p></div>
   </div>
-  <div class="idea-line"><span>A REAL INTERACTION</span><b aria-hidden="true">→</b><span>COUNTERFACTUAL SAMPLING</span><b aria-hidden="true">→</b><span>PHYSICAL TRAINING</span><b aria-hidden="true">→</b><span class="highlight-label">REAL-WORLD GENERALIZATION</span></div>
+  <div class="idea-line"><span>REAL VIDEOS</span><b aria-hidden="true">→</b><span>GENERATED INTERACTIONS</span><b aria-hidden="true">→</b><span>SIMULATION TRAINING</span><b aria-hidden="true">→</b><span class="highlight-label">REAL ROBOT SKILLS</span></div>
 </section>
 <section class="tinted section-space" id="v2v" aria-labelledby="quiz-title">
   <div class="section-shell">

@@ -40,3 +40,8 @@
 .resource-placeholder{min-width:112px}
 .resource-placeholder:disabled{opacity:.7;cursor:default}
 @media(max-width:440px){.resource-links{gap:8px}.resource-placeholder{min-width:88px;min-height:40px;padding:9px 14px;font-size:12px}}
+
+/* A short introduction; implementation detail belongs in the method section. */
+.motivation .editorial-grid{align-items:center}
+.idea-summary{font-size:16px;line-height:1.7;color:var(--muted);margin-top:20px}
+@media(max-width:760px){.idea-summary{font-size:14px;margin-top:16px}}
